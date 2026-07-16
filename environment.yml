@@ -1,0 +1,22 @@
+name: audio-confidence
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - numpy>=1.24
+  - scipy>=1.10
+  - pandas>=2.0
+  - libsndfile
+  - llvmlite
+  - numba
+  - librosa>=0.10
+  - pysoundfile>=0.12
+
+  - pip:
+      - torch>=2.0.0
+      - torchaudio>=2.0.0
+      - torchvision>=0.15.0
+      - pyannote.audio==3.4.0
+      - speechbrain==1.1.0
+      - plotly>=5.20

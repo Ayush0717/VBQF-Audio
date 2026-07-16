@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: transparent; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+        .player-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        audio {
+            flex: 1;
+            height: 40px;
+            border-radius: 8px;
+        }
+        .time-display {
+            color: #e0e0e0;
+            font-size: 14px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            min-width: 120px;
+            text-align: center;
+        }
+        .time-display .current { color: #64ffda; }
+        .time-display .separator { color: #666; }
+    </style>
+</head>
+<body>
+    <div class="player-container">
+        <audio id="player" controls preload="auto"></audio>
+        <div class="time-display">
+            <span class="current" id="cur-time">0:00.0</span>
+            <span class="separator"> / </span>
+            <span id="tot-time">0:00.0</span>
+        </div>
+    </div>
+    <script>
+        const audio = document.getElementById("player");
+        const curTimeEl = document.getElementById("cur-time");
+        const totTimeEl = document.getElementById("tot-time");
+        let lastSentTime = -1;
+        let isComponentReady = false;
+
+        function fmt(s) {
+            const m = Math.floor(s / 60);
+            const sec = s - m * 60;
+            return m + ":" + (sec < 10 ? "0" : "") + sec.toFixed(1);
+        }
+
+        // 1. Signal readiness to Streamlit
+        window.parent.postMessage({
+            isStreamlitMessage: true,
+            type: "streamlit:componentReady",
+            apiVersion: 1
+        }, "*");
+
+        // 2. Listen for render events (args from Python)
+        window.addEventListener("message", function(event) {
+            if (event.data.type === "streamlit:render") {
+                isComponentReady = true;
+                var args = event.data.args;
+
+                // Set audio source (only once or if URL changed)
+                if (args && args.audio_url) {
+                    if (!audio.src || !audio.src.endsWith(args.audio_url.split("/").pop())) {
+                        audio.src = args.audio_url;
+                    }
+                }
+                
+                // Seek and Autoplay if requested
+                if (args && args.seek_time !== undefined && args.seek_time >= 0) {
+                    // Only seek if the time is actually different (to prevent infinite loops)
+                    if (Math.abs(audio.currentTime - args.seek_time) > 0.5) {
+                        audio.currentTime = args.seek_time;
+                        audio.play().catch(function(e) {
+                            console.log("Autoplay blocked by browser:", e);
+                        });
+                    }
+                }
+
+                // Set frame height
+                window.parent.postMessage({
+                    isStreamlitMessage: true,
+                    type: "streamlit:setFrameHeight",
+                    height: 64
+                }, "*");
+            }
+        });
+
+        // 3. Send current time to Python (throttled to every 500ms)
+        setInterval(function() {
+            if (!isComponentReady) return;
+            if (audio.paused && Math.abs(audio.currentTime - lastSentTime) < 0.1) return;
+
+            var t = audio.currentTime;
+            if (Math.abs(t - lastSentTime) >= 0.4) {
+                lastSentTime = t;
+                window.parent.postMessage({
+                    isStreamlitMessage: true,
+                    type: "streamlit:setComponentValue",
+                    value: t
+                }, "*");
+            }
+        }, 500);
+
+        // 4. Always report on seek (user clicked on the audio timeline)
+        audio.addEventListener("seeked", function() {
+            lastSentTime = audio.currentTime;
+            window.parent.postMessage({
+                isStreamlitMessage: true,
+                type: "streamlit:setComponentValue",
+                value: audio.currentTime
+            }, "*");
+        });
+
+        // 5. Report on pause (so dashboard freezes)
+        audio.addEventListener("pause", function() {
+            lastSentTime = audio.currentTime;
+            window.parent.postMessage({
+                isStreamlitMessage: true,
+                type: "streamlit:setComponentValue",
+                value: audio.currentTime
+            }, "*");
+        });
+
+        // 6. Update the time display (purely visual, no communication)
+        audio.addEventListener("timeupdate", function() {
+            curTimeEl.textContent = fmt(audio.currentTime);
+        });
+        audio.addEventListener("loadedmetadata", function() {
+            totTimeEl.textContent = fmt(audio.duration);
+        });
+    </script>
+</body>
+</html>

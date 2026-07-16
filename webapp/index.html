@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Call Investigation Report</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar collapsed" id="sidebar">
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-view="view-overview">🏠 Dashboard Overview</a>
+                <a href="#" class="nav-item" data-view="view-timeline">📈 Timeline & Analysis</a>
+                <a href="#" class="nav-item" data-view="view-block">🧩 Block Analysis</a>
+                <a href="#" class="nav-item" data-view="view-speaker">🗣️ Speaker & Diarization</a>
+                <a href="#" class="nav-item" data-view="view-scores">📋 Score Breakdown</a>
+            </nav>
+        </aside>
+        
+        <div class="main-content">
+            <!-- Header -->
+            <header class="top-nav" style="padding: 20px 30px;">
+                <button id="sidebar-toggle" style="background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; padding: 0; margin-right: 15px; outline: none;">☰</button>
+                <div class="logo" style="font-weight: 800; font-size: 18px; color: #fff; margin-right: auto;">Voice Intelligence</div>
+                <div class="controls" style="display: flex; gap: 10px; align-items: center;">
+                    <button id="btn-export-timeline" style="background: rgba(255,255,255,0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1); padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s;" title="For R&D / Data Science only">📊 Export Raw Timeline</button>
+                    <button id="btn-export-report" style="background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); transition: all 0.2s;">📦 Export Call Report</button>
+                    <button id="btn-export-batch" style="background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); transition: all 0.2s;" title="Export all analyzed calls as a single CSV">⬇ Export Batch Summary</button>
+                    <select id="file-selector">
+                        <option value="" disabled selected>Select Analysis File...</option>
+                    </select>
+                    <div id="loading-spinner" class="spinner hidden"></div>
+                </div>
+            </header>
+            
+            <!-- Main Dashboard -->
+            <main id="dashboard" class="hidden" style="padding: 30px;">
+                <!-- VIEW 1: OVERVIEW -->
+                <div id="view-overview" class="view-section active">
+                    <!-- Section 1: AI Summary & Health -->
+            <section class="overview-section">
+                <div class="health-card glass-panel" id="health-card">
+                    <h3>Overall Call Health</h3>
+                    <div class="gauge-wrap" id="gauge-container" style="text-align: center; margin: 20px 0;">
+                        <!-- SVG Speedometer goes here -->
+                    </div>
+                    <div class="gate-status" id="gate-multiplier">Gate Multiplier: --x</div>
+                </div>
+                
+                <div class="ai-summary glass-panel">
+                    <h3>AI Summary</h3>
+                    <p id="ai-summary-text">Loading insights...</p>
+                    
+                    <div class="call-meta">
+                        <div class="meta-item"><span>Duration:</span> <strong id="meta-dur">--</strong></div>
+                        <div class="meta-item"><span>Speakers:</span> <strong id="meta-spk">--</strong></div>
+                        <div class="meta-item"><span>Dominant:</span> <strong id="meta-dom">--</strong></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 2: Investigation Panels (3x2 Grid) -->
+            <section class="investigation-grid" id="pillars-grid">
+                <!-- Populated by JS -->
+            </section>
+                </div> <!-- END VIEW 1 -->
+
+                <!-- VIEW 2: TIMELINE -->
+                <div id="view-timeline" class="view-section hidden">
+                    <!-- Section 2: Instantaneous Analysis -->
+                    <section class="instant-analysis glass-panel">
+                <h3>Instantaneous Analysis (t = <span id="current-t">0.0</span>s)</h3>
+                <div class="instant-grid">
+                    <div class="status-panel">
+                        <h4>Conversational State</h4>
+                        <div id="conv-status" class="status-badge idle">IDLE</div>
+                        <div id="active-speaker-info" class="speaker-info">🔇 No active speaker</div>
+                    </div>
+                    <div class="metrics-panel">
+                        <h4>Physical Window Features</h4>
+                        <div class="metrics-grid">
+                            <div class="metric"><label>Vocal Pitch</label><span id="val-pitch">--</span></div>
+                            <div class="metric"><label>RMS Amp</label><span id="val-rms">--</span></div>
+                            <div class="metric"><label>Energy</label><span id="val-energy">--</span></div>
+                            <div class="metric"><label>Loudness</label><span id="val-loud">--</span></div>
+                            <div class="metric"><label>SNR</label><span id="val-snr">--</span></div>
+                            <div class="metric"><label>Speech Quality</label><span id="val-qual">--</span></div>
+                        </div>
+                    </div>
+                </div>
+                            </section>
+
+                    <!-- Section 5: Timeline Visualizations -->
+                    <section class="glass-panel" style="margin-bottom: 30px; padding: 25px;">
+                        <h3 style="margin-bottom: 15px; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px;">Timeline Visualizations</h3>
+                        
+                        <div style="font-size: 11px; color: var(--text-muted); margin: 8px 0 3px; text-transform: uppercase; letter-spacing: 0.8px;">waveform &middot; VAD segments &middot; decision turn (violet)</div>
+                        <canvas id="waveform-canvas" style="width: 100%; height: 130px; display: block; border-radius: 8px; background: #0b0f18; cursor: crosshair; margin-bottom: 10px;"></canvas>
+                        
+                        <div style="font-size: 11px; color: var(--text-muted); margin: 8px 0 3px; text-transform: uppercase; letter-spacing: 0.8px;">realtime tracks (animate under playhead)</div>
+                        <canvas id="realtime-canvas" style="width: 100%; height: 150px; display: block; border-radius: 8px; background: #0b0f18; cursor: crosshair; margin-bottom: 10px;"></canvas>
+                        
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">
+                            <i style="background:#38bdf8; display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:4px;"></i>loudness envelope 
+                            <i style="background:#a78bfa; display:inline-block; width:9px; height:9px; border-radius:2px; margin: 0 4px 0 12px;"></i>decision turn
+                        </div>
+                    </section>
+                </div> <!-- END VIEW 2 -->
+
+                <!-- VIEW 3: BLOCK -->
+                <div id="view-block" class="view-section hidden">
+                    <!-- Section 4: Block Analysis -->
+            <section class="glass-panel" style="margin-bottom: 30px; padding: 25px;">
+                <h3 style="margin-bottom: 15px; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px;">Block Analysis</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <span style="color: var(--text-muted); font-size: 13px;">10-second Temporal Summaries</span>
+                    <select id="block-selector" style="background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #fff; padding: 6px 12px; border-radius: 6px;"></select>
+                </div>
+                <div class="block-details-container hidden" id="block-details" style="background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border); border-radius: 12px; padding: 20px; margin-bottom: 25px;">
+                    <div class="tabs" style="display: flex; gap: 10px; border-bottom: 1px solid var(--glass-border); margin-bottom: 20px; padding-bottom: 10px;">
+                        <button class="tab-btn active" data-tab="tab-scores">🏆 Quality Scores</button>
+                        <button class="tab-btn" data-tab="tab-stats">📊 Physical Statistics</button>
+                        <button class="tab-btn" data-tab="tab-speech">🗣️ Speech Activity</button>
+                        <button class="tab-btn" data-tab="tab-conv">🤝 Conversation Stats</button>
+                    </div>
+                    
+                    <div id="tab-scores" class="tab-content active" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px;">
+                        <div class="metric"><label>Audio Quality</label><span id="bd-aq">--</span></div>
+                        <div class="metric"><label>Voice Stability</label><span id="bd-vs">--</span></div>
+                        <div class="metric"><label>Conv Flow</label><span id="bd-cf">--</span></div>
+                        <div class="metric"><label>Conv Balance</label><span id="bd-cb">--</span></div>
+                        <div class="metric"><label>Speech Activity</label><span id="bd-sa">--</span></div>
+                    </div>
+                    
+                    <div id="tab-stats" class="tab-content hidden" style="overflow-x: auto; max-height: 300px;">
+                        <table class="data-table" id="bd-stats-table">
+                            <thead style="position: sticky; top: 0; background: #161920;">
+                                <tr><th>Feature Metric</th><th>Minimum</th><th>Maximum</th><th>Average</th><th>Std Deviation</th></tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    
+                    <div id="tab-speech" class="tab-content hidden" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <div class="metric"><label>Speech active time</label><span id="bd-speech-pct">--</span></div>
+                            <div class="metric"><label>Silence time</label><span id="bd-silence-pct">--</span></div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <div class="metric"><label>Pause Count</label><span id="bd-pause-c">--</span></div>
+                            <div class="metric"><label>Total Pause Dur</label><span id="bd-pause-d">--</span></div>
+                            <div class="metric"><label>Longest Pause</label><span id="bd-pause-m">--</span></div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <div class="metric"><label>Dropout Count</label><span id="bd-drop-c">--</span></div>
+                            <div class="metric"><label>Total Dropout Dur</label><span id="bd-drop-d">--</span></div>
+                        </div>
+                    </div>
+                    
+                    <div id="tab-conv" class="tab-content hidden" style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <div class="metric"><label>Total Turns</label><span id="bd-turns">--</span></div>
+                            <div class="metric"><label>Speaker Changes</label><span id="bd-changes">--</span></div>
+                            <div class="metric"><label>Avg Response Latency</label><span id="bd-latency">--</span></div>
+                        </div>
+                        <div>
+                            <h4 style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px; text-transform: uppercase;">Speaker Share inside this Block</h4>
+                            <div id="bd-share-bars" style="display: flex; flex-direction: column; gap: 10px;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="table-container" style="overflow-x: auto; max-height: 400px; overflow-y: auto;">
+                    <table id="block-table" class="data-table">
+                        <thead style="position: sticky; top: 0; background: #161920; z-index: 10;">
+                            <tr><th>Block</th><th>Time</th><th>Quality</th><th>Stability</th><th>Flow</th><th>Balance</th><th>Activity</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+                </div> <!-- END VIEW 3 -->
+
+                <!-- VIEW 4: SPEAKER & DIARIZATION -->
+                <div id="view-speaker" class="view-section hidden">
+                    <!-- Section 6: Speaker Analysis -->
+            <section class="overview-section" style="margin-bottom: 30px;">
+                <div class="glass-panel" style="padding: 25px;">
+                    <h3 style="margin-bottom: 15px; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px;">Speaker Demographics</h3>
+                    <div class="table-container" style="overflow-x: auto;">
+                        <table id="speaker-table" class="data-table">
+                            <thead>
+                                <tr><th>Speaker</th><th>Talk Time</th><th>Turns</th><th>Avg Turn</th><th>Rate</th></tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="glass-panel" style="padding: 25px;">
+                    <h3 style="margin-bottom: 15px; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px;">Conversational Dynamics</h3>
+                    <div class="table-container" style="overflow-x: auto;">
+                        <table id="speaker-dynamics-table" class="data-table">
+                            <thead>
+                                <tr><th>Speaker</th><th>Longest Turn</th><th>Avg Response Delay</th><th>Interruptions Caused</th></tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="glass-panel" style="padding: 25px; display: flex; flex-direction: column; align-items: center;">
+                    <h3 style="margin-bottom: 15px; align-self: flex-start; width: 100%; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px;">Conversational Ratios</h3>
+                    <div id="pie-chart" style="width: 100%; height: 300px;"></div>
+                </div>
+            </section>
+
+            <!-- Section: Diarization -->
+            <section class="glass-panel" style="margin-bottom: 60px; padding: 25px;">
+                <h3 style="margin-bottom: 15px; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px;">Diarization Timeline</h3>
+                <div style="color: var(--text-muted); font-size: 13px; margin-bottom: 15px;">Real-time Audio Sync Playback</div>
+                
+                <div id="diarization-visualizer" style="display: flex; width: 100%; height: 30px; background: rgba(0,0,0,0.3); border-radius: 6px; overflow: hidden; position: relative; margin-bottom: 20px;">
+                    <!-- populated by js -->
+                </div>
+                
+                <details style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; border: 1px solid var(--glass-border); cursor: pointer;">
+                    <summary style="font-size: 14px; font-weight: 600; outline: none;">View Raw Diarization Timestamps</summary>
+                    <div style="margin-top: 15px; overflow-x: auto; max-height: 300px; overflow-y: auto;">
+                        <table id="raw-diarization-table" class="data-table">
+                            <thead style="position: sticky; top: 0; background: #161920;">
+                                <tr><th>Speaker</th><th>Start</th><th>End</th><th>Duration</th></tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </details>
+            </section>
+                </div> <!-- END VIEW 4 -->
+
+                <!-- VIEW 6: SCORES -->
+                <div id="view-scores" class="view-section hidden">
+                    <!-- Section 7: Score Breakdown -->
+            <section class="glass-panel" style="margin-bottom: 60px; padding: 25px;">
+                <h3 style="margin-bottom: 15px; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px;">Score Breakdown</h3>
+                <div style="color: var(--text-muted); font-size: 13px; margin-bottom: 25px;">Detailed objective analysis rules, grades, and contributing factors for each score.</div>
+                <div id="score-breakdown-container" style="display: flex; flex-direction: column; gap: 20px;">
+                    <!-- populated by js -->
+                </div>
+                    </section>
+                </div> <!-- END VIEW 6 -->
+            </main>
+        </div>
+    </div>
+
+        <!-- Sticky Playback Controller -->
+        <div class="playback-bar glass-panel hidden" id="playback-bar">
+            <audio id="audio-player" controls preload="auto"></audio>
+            <div class="custom-controls">
+                <span class="time" id="time-current">0:00</span>
+                <input type="range" id="seek-slider" value="0" min="0" max="100" step="0.1">
+                <span class="time" id="time-total">0:00</span>
+            </div>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
