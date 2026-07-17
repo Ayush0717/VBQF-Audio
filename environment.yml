@@ -4,19 +4,29 @@ channels:
 dependencies:
   - python=3.11
   - pip
-  - numpy>=1.24
-  - scipy>=1.10
-  - pandas>=2.0
+  # --- Native C-libraries (must come from conda, not pip) ---
+  - ffmpeg
   - libsndfile
   - llvmlite
   - numba
+  # --- Python packages that resolve cleanly via conda ---
+  - numpy>=1.24
+  - scipy>=1.10
+  - pandas>=2.0
   - librosa>=0.10
   - pysoundfile>=0.12
 
+  # --- Everything else via pip ---
   - pip:
-      - torch>=2.0.0
-      - torchaudio>=2.0.0
-      - torchvision>=0.15.0
+      # -- PyTorch ecosystem (pinned to exact working versions) --
+      - torch==2.2.2
+      - torchaudio==2.2.2
+      - torchvision==0.17.2
+      # -- ML / Audio pipeline --
       - pyannote.audio==3.4.0
       - speechbrain==1.1.0
+      # -- Data & Visualization --
       - plotly>=5.20
+      - openpyxl>=3.1
+      # -- Web UI (Streamlit dashboard) --
+      - streamlit>=1.30

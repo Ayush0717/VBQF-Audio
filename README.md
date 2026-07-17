@@ -6,6 +6,12 @@ By fully automating QA, VIP allows organizations to monitor 100% of their call v
 
 ---
 
+## ⚠️ Python Version Requirement
+
+> **This project requires Python 3.10 or 3.11.** Do NOT use Python 3.12+ or 3.14. Many ML dependencies (`pyannote.audio`, `torch`, `torchaudio`) are not yet compatible with newer Python versions and will crash at import time.
+
+---
+
 ## 🚀 Setup & Installation
 
 ### Option 1: Conda Environment (Recommended)
@@ -22,9 +28,20 @@ conda activate audio-confidence
 ### Option 2: Pure Python Virtual Environment
 If you cannot use Conda, you can install the dependencies via `pip`.
 
+> ⚠️ You **must** use Python 3.11. Check with `python3.11 --version` first.
+
+**Mac/Linux:**
 ```bash
-python3 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+**Windows (PowerShell):**
+```powershell
+python3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install --upgrade pip
 pip install -r requirements.txt
 ```

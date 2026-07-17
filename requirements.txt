@@ -1,12 +1,35 @@
+# ===================================================
+# Voice Intelligence Platform – pip requirements
+# ===================================================
+# IMPORTANT: This project needs Python 3.10 or 3.11.
+# Do NOT use Python 3.12+ (torch/pyannote will break).
+# If using pip (not conda), you also need system-level
+# ffmpeg and libsndfile installed.  See README.md.
+# ===================================================
+
+# --- Audio processing ---
 librosa>=0.10
 numpy>=1.24
-pandas>=2.0
-plotly>=5.20
 scipy>=1.10
 soundfile>=0.12
-openpyxl>=3.1
-torch>=2.0.0
-torchaudio>=2.0.0
-torchvision>=0.15.0
+
+# --- PyTorch ecosystem (pinned for pyannote.audio 3.4.0 compat) ---
+# NOTE: PyTorch is NOT on standard PyPI. The --extra-index-url below
+# tells pip to also look at PyTorch's official CPU wheel server.
+# If you have an NVIDIA GPU, replace "cpu" with "cu118" or "cu121".
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.2.2
+torchaudio==2.2.2
+torchvision==0.17.2
+
+# --- ML / Speaker diarization ---
 pyannote.audio==3.4.0
 speechbrain==1.1.0
+
+# --- Data & Visualization ---
+pandas>=2.0
+plotly>=5.20
+openpyxl>=3.1
+
+# --- Web UI (Streamlit dashboard) ---
+streamlit>=1.30

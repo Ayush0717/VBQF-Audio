@@ -253,7 +253,7 @@ def compute_engineered_features(context: AnalysisContext) -> dict[str, Any]:
         "turn_count": turn_count,
         "speaker_change_count": speaker_changes_count,
         "average_turn_duration": round(
-            float(np.mean(turn_durations)) if turn_durations else 0.0, 2
+            float(np.mean(floor_durations)) if floor_durations else 0.0, 2
         ),
         "longest_turn": round(longest_turn, 2),
         "response_latency": round(avg_latency, 2),
