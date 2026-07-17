@@ -45,6 +45,16 @@ def diarize_audio(
         )
         raise e
 
+    if pipeline is None:
+        raise RuntimeError(
+            "Failed to load pyannote/speaker-diarization-3.1 pipeline.\n"
+            "This is likely an authentication issue. Please:\n"
+            "  1. Get a valid token at https://huggingface.co/settings/tokens\n"
+            "  2. Accept the model terms at https://huggingface.co/pyannote/speaker-diarization-3.1\n"
+            "  3. Accept the model terms at https://huggingface.co/pyannote/segmentation-3.0\n"
+            "  4. Update the HF_TOKEN in diarizer.py or set the HF_TOKEN environment variable."
+        )
+
     # Send pipeline to GPU if available
     if torch.cuda.is_available():
         pipeline.to(torch.device("cuda"))
