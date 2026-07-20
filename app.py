@@ -21,6 +21,7 @@ def process_audio(
     audio_path: str | Path,
     output_path: str | Path | None = None,
     config: PipelineConfig = DEFAULT_CONFIG,
+    extractors: list | None = None,
 ) -> FeatureStore:
     audio_path = Path(audio_path)
     audio = load_audio(
@@ -28,7 +29,8 @@ def process_audio(
         target_sample_rate=config.audio.target_sample_rate,
         normalize=config.audio.normalize,
     )
-    extractors = build_extractors(config)
+    if extractors is None:
+        extractors = build_extractors(config)
 
     store = FeatureStore(
         metadata={

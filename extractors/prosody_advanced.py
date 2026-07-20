@@ -7,6 +7,66 @@ from extractors.base import BaseExtractor
 EPSILON = 1e-10
 
 
+# ── Shared FFT-based autocorrelation ─────────────────────────────────────────
+# np.correlate(mode="full") is O(n²). FFT-based autocorrelation is O(n log n).
+# For a 16kHz window of 1s that's 16000 samples — FFT is ~10x faster.
+
+def _fft_autocorrelation(signal: np.ndarray) -> np.ndarray:
+    """Compute the one-sided autocorrelation via FFT. Returns corr[0..N-1]."""
+    n = signal.size
+    # Pad to next power of 2 for efficient FFT (at least 2*n to avoid circular artifacts)
+    fft_size = 1
+    while fft_size < 2 * n:
+        fft_size <<= 1
+    spectrum = np.fft.rfft(signal, n=fft_size)
+    power = spectrum * np.conj(spectrum)
+    full_corr = np.fft.irfft(power, n=fft_size)
+    # Return the one-sided autocorrelation (lags 0..N-1)
+    return full_corr[:n].real
+
+
+def _pitch_analysis(
+    window: np.ndarray,
+    sample_rate: int,
+    min_hz: float = 75.0,
+    max_hz: float = 500.0,
+    confidence_threshold: float = 0.25,
+) -> dict | None:
+    """
+    Shared pitch period detection used by Jitter, Shimmer, and HNR.
+    Returns None if unvoiced/invalid, otherwise returns a dict with:
+      - corr: one-sided autocorrelation
+      - lag: pitch period in samples
+      - confidence: normalized autocorrelation at the pitch lag
+      - r_xx: corr[lag]/corr[0]
+    """
+    if window.size < 2 or float(np.max(np.abs(window))) == 0.0:
+        return None
+
+    centered = window - np.mean(window)
+    corr = _fft_autocorrelation(centered)
+
+    if corr.size == 0 or corr[0] <= 0:
+        return None
+
+    min_lag = max(1, int(sample_rate / max_hz))
+    max_lag = min(corr.size - 1, int(sample_rate / min_hz))
+    if max_lag <= min_lag:
+        return None
+
+    search = corr[min_lag:max_lag]
+    lag = int(np.argmax(search) + min_lag)
+    r_xx = float(corr[lag] / corr[0])
+
+    if r_xx < confidence_threshold:
+        return None
+
+    if lag < 2:
+        return None
+
+    return {"corr": corr, "lag": lag, "confidence": r_xx, "r_xx": r_xx}
+
+
 class JitterExtractor(BaseExtractor):
     name = "jitter"
 
@@ -15,32 +75,11 @@ class JitterExtractor(BaseExtractor):
         self.max_hz = max_hz
 
     def extract(self, window: np.ndarray, sample_rate: int) -> dict[str, float | None]:
-        if window.size < 2 or float(np.max(np.abs(window))) == 0.0:
+        analysis = _pitch_analysis(window, sample_rate, self.min_hz, self.max_hz)
+        if analysis is None:
             return {"jitter_pct": None}
 
-        # Demean
-        centered = window - np.mean(window)
-        corr = np.correlate(centered, centered, mode="full")[window.size - 1 :]
-        if corr.size == 0 or corr[0] <= 0:
-            return {"jitter_pct": None}
-
-        min_lag = max(1, int(sample_rate / self.max_hz))
-        max_lag = min(corr.size - 1, int(sample_rate / self.min_hz))
-        if max_lag <= min_lag:
-            return {"jitter_pct": None}
-
-        search = corr[min_lag:max_lag]
-        lag = int(np.argmax(search) + min_lag)
-        confidence = float(corr[lag] / corr[0])
-
-        # Unvoiced/silence guard
-        if confidence < 0.25:
-            return {"jitter_pct": None}
-
-        # Pitch period T in samples
-        pitch_period = lag
-        if pitch_period < 2:
-            return {"jitter_pct": None}
+        pitch_period = analysis["lag"]
 
         # Find zero crossings or local peaks to divide into periods
         # For simplicity, we step through the window by the pitch period and find actual peaks
@@ -74,29 +113,11 @@ class ShimmerExtractor(BaseExtractor):
         self.max_hz = max_hz
 
     def extract(self, window: np.ndarray, sample_rate: int) -> dict[str, float | None]:
-        if window.size < 2 or float(np.max(np.abs(window))) == 0.0:
+        analysis = _pitch_analysis(window, sample_rate, self.min_hz, self.max_hz)
+        if analysis is None:
             return {"shimmer_pct": None}
 
-        centered = window - np.mean(window)
-        corr = np.correlate(centered, centered, mode="full")[window.size - 1 :]
-        if corr.size == 0 or corr[0] <= 0:
-            return {"shimmer_pct": None}
-
-        min_lag = max(1, int(sample_rate / self.max_hz))
-        max_lag = min(corr.size - 1, int(sample_rate / self.min_hz))
-        if max_lag <= min_lag:
-            return {"shimmer_pct": None}
-
-        search = corr[min_lag:max_lag]
-        lag = int(np.argmax(search) + min_lag)
-        confidence = float(corr[lag] / corr[0])
-
-        if confidence < 0.25:
-            return {"shimmer_pct": None}
-
-        pitch_period = lag
-        if pitch_period < 2:
-            return {"shimmer_pct": None}
+        pitch_period = analysis["lag"]
 
         # Find peak amplitudes of consecutive pitch periods
         amplitudes = []
@@ -126,26 +147,14 @@ class HnrExtractor(BaseExtractor):
         self.max_hz = max_hz
 
     def extract(self, window: np.ndarray, sample_rate: int) -> dict[str, float | None]:
-        if window.size < 2 or float(np.max(np.abs(window))) == 0.0:
+        analysis = _pitch_analysis(window, sample_rate, self.min_hz, self.max_hz)
+        if analysis is None:
             return {"hnr_db": None}
-
-        centered = window - np.mean(window)
-        corr = np.correlate(centered, centered, mode="full")[window.size - 1 :]
-        if corr.size == 0 or corr[0] <= 0:
-            return {"hnr_db": None}
-
-        min_lag = max(1, int(sample_rate / self.max_hz))
-        max_lag = min(corr.size - 1, int(sample_rate / self.min_hz))
-        if max_lag <= min_lag:
-            return {"hnr_db": None}
-
-        search = corr[min_lag:max_lag]
-        lag = int(np.argmax(search) + min_lag)
 
         # Normalized autocorrelation coefficient
-        r_xx = float(corr[lag] / corr[0])
+        r_xx = analysis["r_xx"]
 
-        # Ensure r_xx stays in a safe bounds (0.01 to 0.99) for HNR log ratio
+        # Ensure r_xx stays in safe bounds (0.01 to 0.99) for HNR log ratio
         r_xx = max(0.01, min(0.99, r_xx))
 
         hnr_db = 10 * math.log10(r_xx / (1.0 - r_xx))
@@ -169,20 +178,20 @@ class SpeakingRateExtractor(BaseExtractor):
         box = np.ones(box_len) / box_len
         envelope = np.convolve(rectified, box, mode="same")
 
-        # 3. Find peaks in the envelope
-        # A point is a peak if it is greater than its neighbors and above a threshold
+        # 3. Find peaks in the envelope (vectorized — no Python loop)
         mean_env = float(np.mean(envelope))
         std_env = float(np.std(envelope))
         threshold = mean_env + 0.3 * std_env
 
-        peaks = 0
-        for i in range(1, len(envelope) - 1):
-            if envelope[i] > envelope[i - 1] and envelope[i] > envelope[i + 1]:
-                if envelope[i] > threshold:
-                    peaks += 1
+        # A peak: envelope[i] > envelope[i-1] AND envelope[i] > envelope[i+1] AND above threshold
+        left_bigger = envelope[1:-1] > envelope[:-2]
+        right_bigger = envelope[1:-1] > envelope[2:]
+        above_threshold = envelope[1:-1] > threshold
+        peaks = int(np.sum(left_bigger & right_bigger & above_threshold))
 
         # speaking rate = peaks / window duration (window size in seconds)
         duration_s = window.size / sample_rate
         speaking_rate_sps = peaks / duration_s if duration_s > 0 else 0.0
 
         return {"speaking_rate_sps": float(speaking_rate_sps)}
+

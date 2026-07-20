@@ -87,11 +87,21 @@ To process a new call recording, place your `.wav` file into `data/audio/` and r
 python app.py data/audio/your_call.wav
 ```
 
-### Batch Processing
-To process **all** `.wav` files in your `data/audio/` directory automatically, use the batch script:
+### Batch Processing (Optimized for Parallel Execution)
+To process **all** `.wav` files in your `data/audio/` directory automatically, use the batch script. This script is highly optimized for multi-core environments (like VMs) and will process multiple files simultaneously to maximize throughput.
+
 ```bash
+# Default: Runs with 6 parallel workers (recommended for 64GB RAM)
 python batch_process_audio.py
+
+# Custom: Manually specify the number of parallel workers
+python batch_process_audio.py --workers 4
+
+# Sequential: Run with 1 worker (good for debugging)
+python batch_process_audio.py --workers 1
 ```
+
+> **Note on Performance:** The default of 6 workers is calibrated for machines with ~64 GiB RAM, as the Pyannote AI model requires ~2.5 - 3 GiB of memory per active worker. Using the default settings provides a massive speedup (roughly 6x faster wall-time) over sequential processing.
 
 ### Optional Arguments (for `app.py`):
 - `--num_speakers 2`: Forces the diarization engine to look for exactly 2 speakers (useful for noisy calls where auto-detect struggles).
