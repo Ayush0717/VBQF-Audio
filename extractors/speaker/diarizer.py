@@ -38,10 +38,15 @@ def _get_pipeline(hf_token: str | None = None) -> Pipeline:
         raise ValueError(
             "A Hugging Face token is required to download the pyannote.audio model. Set HF_TOKEN environment variable."
         )
-
     LOGGER.info("Initializing Pyannote Speaker Diarization Pipeline (one-time load)...")
     load_start = time.perf_counter()
     try:
+        # 1. Try modern syntax (huggingface_hub >= 0.22 / pyannote 3.2+)
+        pipeline = Pipeline.from_pretrained(
+            "pyannote/speaker-diarization-3.1", token=token
+        )
+    except TypeError:
+        # 2. Fall back to legacy syntax (older pyannote versions)
         pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1", use_auth_token=token
         )
@@ -50,7 +55,6 @@ def _get_pipeline(hf_token: str | None = None) -> Pipeline:
             "Failed to load pyannote pipeline. Make sure your Hugging Face token is valid and you have accepted the user conditions for pyannote/speaker-diarization-3.1 and pyannote/segmentation-3.0 on huggingface.co."
         )
         raise e
-
     # Send pipeline to GPU if available
     if torch.cuda.is_available():
         pipeline.to(torch.device("cuda"))
