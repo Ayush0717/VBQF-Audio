@@ -309,9 +309,24 @@
 # if __name__ == "__main__":
 #     main()
 
+import os
+
+# ── CPU Thread Control ────────────────────────────────────────────────────────
+# CRITICAL: These MUST be set BEFORE torch/numpy are imported.
+# VM: 16 vCPUs, 6 workers → 16 / 6 ≈ 2 threads per worker.
+# Without this, every worker tries to use all 16 cores:
+#   6 workers × 16 threads = 96 threads fighting for 16 cores → massive slowdown.
+# With this, each worker cleanly owns 2 cores → 6 × 2 = 12 cores used, 4 for OS.
+_THREADS_PER_WORKER = "2"
+os.environ.setdefault("OMP_NUM_THREADS", _THREADS_PER_WORKER)
+os.environ.setdefault("MKL_NUM_THREADS", _THREADS_PER_WORKER)
+os.environ.setdefault("OPENBLAS_NUM_THREADS", _THREADS_PER_WORKER)
+os.environ.setdefault("NUMEXPR_NUM_THREADS", _THREADS_PER_WORKER)
+os.environ.setdefault("VECLIB_MAXIMUM_THREADS", _THREADS_PER_WORKER)
+# ─────────────────────────────────────────────────────────────────────────────
+
 import argparse
 import logging
-import os
 import ssl
 import time
 import traceback
@@ -344,8 +359,12 @@ def apply_global_patches():
     if "HF_TOKEN" not in os.environ:
         os.environ["HF_TOKEN"] = "YOUR_HF_TOKEN_HERE"
 
-    # 4. PyTorch Security Override (force weights_only=False for legacy Pyannote metadata)
+    # 4. PyTorch Security Override + Thread Control
     import torch
+
+    # Belt-and-suspenders thread limit (in case env vars were set after torch import)
+    torch.set_num_threads(int(_THREADS_PER_WORKER))
+    torch.set_num_interop_threads(int(_THREADS_PER_WORKER))
 
     if not hasattr(torch, "_is_patched"):
         original_torch_load = torch.load
@@ -445,11 +464,22 @@ def _worker_init():
     apply_global_patches()
 
 
+# ── Per-worker extractor cache ───────────────────────────────────────────────
+# build_extractors() creates 18 extractor objects. We cache them at module level
+# so each worker process builds them exactly once across all files it processes.
+_WORKER_EXTRACTORS = None
+
+
 def _process_single_file(audio_path_str: str, output_path_str: str) -> dict:
     """Worker function executed in each subprocess."""
+    global _WORKER_EXTRACTORS
     from app import process_audio
     from config import DEFAULT_CONFIG
     from extractors import build_extractors
+
+    # Build extractors once per worker process (reused for all files this worker handles)
+    if _WORKER_EXTRACTORS is None:
+        _WORKER_EXTRACTORS = build_extractors(DEFAULT_CONFIG)
 
     audio_path = Path(audio_path_str)
     output_path = Path(output_path_str)
@@ -457,12 +487,11 @@ def _process_single_file(audio_path_str: str, output_path_str: str) -> dict:
 
     start_time = time.perf_counter()
     try:
-        extractors = build_extractors(DEFAULT_CONFIG)
         process_audio(
             audio_path,
             output_path=output_path,
             config=DEFAULT_CONFIG,
-            extractors=extractors,
+            extractors=_WORKER_EXTRACTORS,
         )
         result["elapsed"] = time.perf_counter() - start_time
     except Exception as e:
