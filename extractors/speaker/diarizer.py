@@ -31,9 +31,7 @@ def _get_pipeline(hf_token: str | None = None) -> Pipeline:
         return _CACHED_PIPELINE
 
     token = hf_token or os.environ.get(
-        "HF_TOKEN", "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"
-    )
-
+        "HF_TOKEN")
     if not token:
         raise ValueError(
             "A Hugging Face token is required to download the pyannote.audio model. Set HF_TOKEN environment variable."
