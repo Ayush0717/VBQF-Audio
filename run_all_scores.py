@@ -75,7 +75,7 @@ def pillar_breakdown(engineered: dict) -> dict:
     sb = engineered.get("speech_behaviour", {})
     cb = engineered.get("conversation_behaviour", {})
     rd = engineered.get("response_dynamics", {})
-    dt = engineered.get("decision_turn_features", {})
+    ii = engineered.get("interaction_integrity", {})
 
     snr_sub      = _normalize_piecewise(aq.get("average_snr", 0.0), [(0,0),(40,30),(50,60),(65,100)])
     quality_sub  = _normalize_linear(vq.get("avg_speech_quality", 0.0), low=0.3, high=1.0)
@@ -101,12 +101,9 @@ def pillar_breakdown(engineered: dict) -> dict:
     pause_freq_sub  = _normalize_piecewise(sb.get("pause_frequency", 0.0), [(0,90),(2,100),(5,90),(10,60),(20,20),(30,0)])
     pause_dur_sub   = _normalize_optimal_range(sb.get("average_pause_duration", 0.0), 0.5, 1.0, 2.5, 4.5)
 
-    pitch_slope_sub = _normalize_linear(dt.get("terminal_pitch_slope", 0.0), low=-50.0, high=100.0, invert=True)
-    dur_z_sub       = _normalize_optimal_range(dt.get("decision_turn_duration_z", 0.0), -1.5, -0.5, 2.0, 5.0)
-    loud_z_sub      = _normalize_linear(dt.get("answer_loudness_z", 0.0), low=-2.0, high=2.0)
-    voice_frac_sub  = _normalize_linear(dt.get("voicing_fraction", 0.0), low=0.4, high=0.9)
-    cutoff_sub      = 0.0 if dt.get("abrupt_cutoff", False) else 100.0
-    backchannel_sub = _normalize_linear(dt.get("backchannel_composite", 0.0), low=0.0, high=1.0, invert=True)
+    cutoff_sub      = {False: 100.0, True: 0.0}.get(ii.get("abrupt_cutoff", False), 100.0)
+    trailing_silence_sub = _normalize_linear(ii.get("trailing_silence_seconds", 0.0), low=0.0, high=2.0)
+    final_overlap_sub = _normalize_linear(ii.get("final_window_overlap_count", 0), low=0, high=2.0, invert=True)
 
     return {
         "audio_quality": {
@@ -138,21 +135,18 @@ def pillar_breakdown(engineered: dict) -> dict:
             "pause_freq_sub (30%)":  round(pause_freq_sub, 1),
             "pause_dur_sub (30%)":   round(pause_dur_sub, 1),
         },
-        "collection_confidence": {
-            "pitch_slope_sub (25%)": round(pitch_slope_sub, 1),
-            "dur_z_sub (20%)":       round(dur_z_sub, 1),
-            "loudness_z_sub (20%)":  round(loud_z_sub, 1),
-            "voicing_frac_sub (15%)":round(voice_frac_sub, 1),
-            "cutoff_sub (10%)":      round(cutoff_sub, 1),
-            "backchannel_sub (10%)": round(backchannel_sub, 1),
+        "interaction_integrity": {
+            "cutoff_sub (35%)":      round(cutoff_sub, 1),
+            "trailing_silence_sub (35%)": round(trailing_silence_sub, 1),
+            "final_overlap_sub (30%)": round(final_overlap_sub, 1),
         },
     }
 
 
 PILLAR_WEIGHTS = {
-    "collection_confidence": 0.30,
-    "audio_quality":         0.20,
-    "conversation_flow":     0.20,
+    "audio_quality":         0.25,
+    "conversation_flow":     0.25,
+    "interaction_integrity": 0.20,
     "voice_stability":       0.10,
     "conversation_balance":  0.10,
     "speech_activity":       0.10,
@@ -176,7 +170,7 @@ def print_report(name, ef, scores, gate, subs):
     sb = ef.get("speech_behaviour", {})
     cb = ef.get("conversation_behaviour", {})
     rd = ef.get("response_dynamics", {})
-    dt = ef.get("decision_turn_features", {})
+    ii = ef.get("interaction_integrity", {})
 
     SEP = "=" * 90
 
@@ -213,16 +207,13 @@ def print_report(name, ef, scores, gate, subs):
     print(f"    conv_balance_diff   : {cb.get('conversation_balance', 'N/A')}%")
     print(f"    overlap_freq/min    : {rd.get('overlap_frequency', 'N/A')}")
 
-    print("\n  [DECISION TURN FEATURES]")
-    if dt:
-        print(f"    terminal_pitch_slope: {dt.get('terminal_pitch_slope', 'N/A')}")
-        print(f"    decision_turn_dur_z : {dt.get('decision_turn_duration_z', 'N/A')}")
-        print(f"    answer_loudness_z   : {dt.get('answer_loudness_z', 'N/A')}")
-        print(f"    voicing_fraction    : {dt.get('voicing_fraction', 'N/A')}")
-        print(f"    abrupt_cutoff       : {dt.get('abrupt_cutoff', 'N/A')}")
-        print(f"    backchannel_compos. : {dt.get('backchannel_composite', 'N/A')}")
+    print("\n  [INTERACTION INTEGRITY FEATURES]")
+    if ii:
+        print(f"    abrupt_cutoff       : {ii.get('abrupt_cutoff', 'N/A')}")
+        print(f"    trailing_silence    : {ii.get('trailing_silence_seconds', 'N/A')}s")
+        print(f"    final_window_overlap: {ii.get('final_window_overlap_count', 'N/A')}")
     else:
-        print("    (no decision turn detected)")
+        print("    (no interaction integrity detected)")
 
     print(f"\n  {'-'*88}")
     print("  USABILITY GATE MULTIPLIER")
@@ -245,8 +236,8 @@ def print_report(name, ef, scores, gate, subs):
 
     print(f"\n  {'-'*88}")
     print("  PILLAR SCORES SUMMARY")
-    pillar_keys = ["collection_confidence", "audio_quality", "voice_stability",
-                   "conversation_flow", "conversation_balance", "speech_activity"]
+    pillar_keys = ["audio_quality", "conversation_flow", "interaction_integrity",
+                   "voice_stability", "conversation_balance", "speech_activity"]
     for pk in pillar_keys:
         sc = scores.get(pk, 0)
         w  = PILLAR_WEIGHTS.get(pk, 0)
@@ -316,15 +307,15 @@ def main():
         print("\n\n" + "=" * 112)
         print("  SUMMARY TABLE - ALL FILES")
         print("=" * 112)
-        print(f"  {'File':<28} | {'CC':>4} | {'AQ':>4} | {'VS':>4} | {'CF':>4} | {'CB':>4} | {'SA':>4} | {'Gate':>6} | {'Overall':>7} | Label")
+        print(f"  {'File':<28} | {'AQ':>4} | {'CF':>4} | {'II':>4} | {'VS':>4} | {'CB':>4} | {'SA':>4} | {'Gate':>6} | {'Overall':>7} | Label")
         print("  " + "-" * 109)
         for r in all_results:
             s = r["scores"]
             g = r["gate"]["final_gate_multiplier"]
             n = r["file"].replace("_features.json", "")
             print(
-                f"  {n:<28} | {s.get('collection_confidence',0):>4} | {s.get('audio_quality',0):>4} "
-                f"| {s.get('voice_stability',0):>4} | {s.get('conversation_flow',0):>4} "
+                f"  {n:<28} | {s.get('audio_quality',0):>4} | {s.get('conversation_flow',0):>4} "
+                f"| {s.get('interaction_integrity',0):>4} | {s.get('voice_stability',0):>4} "
                 f"| {s.get('conversation_balance',0):>4} | {s.get('speech_activity',0):>4} "
                 f"| {g:>6.3f} | {s.get('overall_call_health',0):>7} | {label(s.get('overall_call_health',0))}"
             )
@@ -335,4 +326,5 @@ def main():
 
 
 if __name__ == "__main__":
+    main()
     main()

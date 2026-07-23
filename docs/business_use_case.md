@@ -23,7 +23,7 @@ Instead of relying solely on Speech-to-Text (which ignores audio health), VIP an
 3. **Conversation Flow:** Identifies awkward silences, system latency (slow bot responses), and severe interruptions.
 4. **Conversation Balance:** Ensures the call is a true dialogue (healthy turn-taking) rather than a monologue.
 5. **Speech Activity:** Measures the ratio of active speech to dead air/silence.
-6. **Collection Confidence:** Specialized rules engine to evaluate the structural integrity of the call (e.g., detecting abrupt hang-ups or network dropouts).
+6. **Interaction Integrity:** Specialized rules engine to evaluate the structural integrity of the call (e.g., detecting abrupt cutoffs, trailing silence, and overlapping speech at the end of the call).
 
 ---
 

@@ -31,7 +31,7 @@ def derive_batch_business_fields(explanations: dict) -> dict:
         "conversation_flow": {"impact": "Failed/incomplete interaction — possible callback required", "action": "Review response delay/interruption segment"},
         "audio_quality": {"impact": "Recording unreliable for compliance audit", "action": "Escalate to IT/vendor"},
         "conversation_balance": {"impact": "One-sided interaction — training opportunity", "action": "Schedule agent coaching"},
-        "collection_confidence": {"impact": "Abrupt termination — possible failed collection", "action": "Flag for re-attempt"},
+        "interaction_integrity": {"impact": "Abrupt termination — possible failed collection", "action": "Flag for re-attempt"},
         "speech_activity": {"impact": "Excessive dead air — system or connection issue", "action": "Check for connection issues"},
     }
 
@@ -82,7 +82,7 @@ def generate_batch_csv(outputs_dir: str = "data/outputs", exports_dir: str = "ex
         overall_grade = expl.get("overall_call_health", {}).get("grade", "")
         
         dropout_count = aq.get("dropout_count", 0)
-        cutoffs = anomalies.get("collection_confidence", {}).get("abrupt_cutoff", [])
+        cutoffs = anomalies.get("interaction_integrity", {}).get("abrupt_cutoff", [])
         recording_status = "FAIL" if (dropout_count > 0 or len(cutoffs) > 0) else "PASS"
         
         any_poor = any(v.get("grade") == "Poor" for k, v in expl.items() if k != "overall_call_health")
@@ -160,8 +160,8 @@ def generate_batch_csv(outputs_dir: str = "data/outputs", exports_dir: str = "ex
             "Conversation Balance Grade": expl.get("conversation_balance", {}).get("grade", ""),
             "Speech Activity Score": scores.get("speech_activity", ""),
             "Speech Activity Grade": expl.get("speech_activity", {}).get("grade", ""),
-            "Collection Confidence Score": scores.get("collection_confidence", ""),
-            "Collection Confidence Grade": expl.get("collection_confidence", {}).get("grade", ""),
+            "Interaction Integrity Score": scores.get("interaction_integrity", ""),
+            "Interaction Integrity Grade": expl.get("interaction_integrity", {}).get("grade", ""),
             
             "Average SNR (dB)": aq.get("average_snr", summary.get("average_snr_db", "")),
             "Average Speech Quality": vq.get("avg_speech_quality", ""),

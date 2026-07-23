@@ -403,26 +403,44 @@ Audio Quality = base + snr_bonus − dropout_pen − noise_pen
 
 ---
 
-### 4.2 Recording Reliability Score
+### 4.2 Conversation Flow Score
 
 ```
-Recording Reliability = 100
-    − (8 × dropout_count)
-    − (10 × dropout_duration)
-    − (0.5 × max(0, noise_level + 50))
-    − (5 × clipping_percentage)
+Flow = 100
+    − (8 × pauses_per_minute)
+    − (12 × overlap_count)
+    − (4 × max(0, response_latency − 1.5))
+    − (0.1 × silence_percentage)
+    + min(15, 1.2 × speaker_change_count)
 ```
 
-| Factor | Penalty |
-|--------|---------|
-| Each dropout occurrence | −8 points |
-| Each second of dropout | −10 points |
-| Elevated noise floor | −0.5 per dB above −50 dB |
-| Each % of clipped samples | −5 points |
+| Factor | Effect |
+|--------|--------|
+| High pause frequency | −8 per pause/min (dead air) |
+| Each speaker overlap | −12 points (interruptions) |
+| Response latency > 1.5s | −4 per extra second |
+| Excessive silence | −0.1 per % |
+| Active speaker changes | +1.2 per change (up to +15 bonus) |
 
 ---
 
-### 4.3 Voice Stability Score
+### 4.3 Interaction Integrity Score
+
+```
+Interaction Integrity = (0.35 × cutoff_sub)
+    + (0.35 × trailing_silence_sub)
+    + (0.30 × final_overlap_sub)
+```
+
+| Factor | Calculation |
+|--------|---------|
+| Abrupt Cutoff | False = 100, True = 0 |
+| Trailing Silence | Linear normalization of 0.0s to 2.0s |
+| Final Window Overlap | Inverted linear normalization of 0 to 2 overlaps |
+
+---
+
+### 4.4 Voice Stability Score
 
 ```
 Voice Stability = 100
@@ -443,24 +461,7 @@ Voice Stability = 100
 
 ---
 
-### 4.4 Conversation Flow Score
-
-```
-Flow = 100
-    − (8 × pauses_per_minute)
-    − (12 × overlap_count)
-    − (4 × max(0, response_latency − 1.5))
-    − (0.1 × silence_percentage)
-    + min(15, 1.2 × speaker_change_count)
-```
-
-| Factor | Effect |
-|--------|--------|
-| High pause frequency | −8 per pause/min (dead air) |
-| Each speaker overlap | −12 points (interruptions) |
-| Response latency > 1.5s | −4 per extra second |
-| Excessive silence | −0.1 per % |
-| Active speaker changes | +1.2 per change (up to +15 bonus) |
+### 4.5 Conversation Balance Score
 
 ---
 
@@ -496,19 +497,27 @@ Score = (80 + 80) / 2 = 80
 ### 4.7 Overall Call Health Score (Weighted Composite)
 
 ```
-Overall = (w₁×AQ + w₂×RR + w₃×VS + w₄×CF + w₅×CB + w₆×SA) / Σwᵢ
+Raw Health = (w₁×AQ + w₂×CF + w₃×II + w₄×VS + w₅×CB + w₆×SA) / Σwᵢ
 ```
 
 | Component | Weight | Default |
 |-----------|--------|---------|
 | Audio Quality | w₁ | **0.25** (25%) |
-| Recording Reliability | w₂ | **0.15** (15%) |
-| Voice Stability | w₃ | **0.15** (15%) |
-| Conversation Flow | w₄ | **0.20** (20%) |
-| Conversation Balance | w₅ | **0.15** (15%) |
+| Conversation Flow | w₂ | **0.25** (25%) |
+| Interaction Integrity | w₃ | **0.20** (20%) |
+| Voice Stability | w₄ | **0.10** (10%) |
+| Conversation Balance | w₅ | **0.10** (10%) |
 | Speech Activity | w₆ | **0.10** (10%) |
 
-> Weights are configurable in [config.py](file:///Users/ayushgoel/Mmfsl/config.py#L25-L32).
+> Weights are configurable in [config.py](file:///Users/ayushgoel/Mmfsl/config.py).
+
+#### The Usability Gate (Penalty Multiplier)
+
+Before finalizing the Overall Health score, the system applies a strict **Usability Gate**. This gate generates a multiplier between `0.0` and `1.0`. It acts as a safety mechanism: if the raw audio is profoundly corrupted (e.g., extreme noise, heavy clipping, massive dropouts), the gate multiplier will pull down the final score, regardless of how well the conversation flowed.
+
+```
+Overall Health = Raw Health × Usability Gate Multiplier
+```
 
 ---
 
@@ -544,16 +553,16 @@ Each score dimension has deterministic rules that fire positive (✓) or negativ
 | Speech quality ≥ 0.85 | ✓ | "Consistent voice signal clarity" |
 | Speech quality < 0.65 | ✗ | "Degraded vocal signal quality" |
 
-#### Recording Reliability Rules
+#### Interaction Integrity Rules
 
 | Condition | Type | Message |
 |-----------|------|---------|
-| Dropout count = 0 | ✓ | "Continuous signal stream (no dropouts)" |
-| Dropout count > 0 | ✗ | "Signal stream dropouts: N occurrences (Xs total)" |
-| Clipping < 0.2% | ✓ | "Zero signal amplitude clipping/distortion" |
-| Clipping ≥ 0.2% | ✗ | "Audio clipping detected: X% of samples clipped" |
-| Recording stability ≥ 85 | ✓ | "Highly stable signal strength" |
-| Recording stability < 85 | ✗ | "Unstable channel signal strength" |
+| Abrupt cutoff = False | ✓ | "Clean call termination with natural trailing silence" |
+| Abrupt cutoff = True | ✗ | "Recording ended while speech was still active — no trailing silence detected" |
+| Trailing silence ≥ 1.5s | ✓ | "Natural conversation decay (Xs trailing silence)" |
+| Trailing silence < 0.5s | ✗ | "Only Xms of silence before call ended — expected ≥ 2 seconds" |
+| Final overlaps = 0 | ✓ | "Clean turn-taking in the final window of the call" |
+| Final overlaps > 0 | ✗ | "X overlapping speech event(s) detected near the end of the call" |
 
 #### Voice Stability Rules
 
@@ -620,11 +629,11 @@ All scoring weights, grade thresholds, and extraction parameters are centralized
 @dataclass
 class ScoreConfig:
     weights = {
+        "interaction_integrity": 0.20,
         "audio_quality": 0.25,
-        "recording_reliability": 0.15,
-        "voice_stability": 0.15,
-        "conversation_flow": 0.20,
-        "conversation_balance": 0.15,
+        "conversation_flow": 0.25,
+        "voice_stability": 0.10,
+        "conversation_balance": 0.10,
         "speech_activity": 0.10,
     }
     thresholds = {

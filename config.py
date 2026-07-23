@@ -59,7 +59,7 @@ class ScoreConfig:
     #   SA (0.10): Low discrimination; candidate for future merge into CF
     weights: dict[str, float] = field(
         default_factory=lambda: {
-            "collection_confidence": 0.20,
+            "interaction_integrity": 0.20,
             "audio_quality": 0.25,
             "conversation_flow": 0.25,
             "voice_stability": 0.10,

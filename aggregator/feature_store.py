@@ -85,17 +85,35 @@ class FeatureStore:
 
     def set_diarization(self, segments: list[dict[str, Any]]) -> None:
         """Stores the continuous speaker segments and calculates high-level statistics."""
-        self.diarization["segments"] = segments
-
-        # Calculate some basic diarization statistics
+        # Calculate initial talk times to identify phantom speakers
         spk_times = {}
+        total_speech = 0.0
         for seg in segments:
             spk = seg["speaker"]
             spk_times[spk] = spk_times.get(spk, 0.0) + seg["duration"]
+            total_speech += seg["duration"]
+
+        # Filter out speakers that speak for < 1.5s AND < 1% of total speech time
+        valid_speakers = {
+            spk for spk, duration in spk_times.items()
+            if duration >= 1.5 or (total_speech > 0 and (duration / total_speech) >= 0.01)
+        }
+
+        # If all speakers were somehow filtered out, keep the one with max duration
+        if not valid_speakers and spk_times:
+            valid_speakers = {max(spk_times, key=spk_times.get)}
+
+        # Filter segments to only include valid speakers
+        filtered_segments = [seg for seg in segments if seg["speaker"] in valid_speakers]
+
+        self.diarization["segments"] = filtered_segments
+
+        # Recalculate stats for valid speakers only
+        valid_spk_times = {spk: spk_times[spk] for spk in valid_speakers}
 
         self.diarization["statistics"] = {
-            "speaker_count": len(spk_times),
-            "talk_times": spk_times,
+            "speaker_count": len(valid_spk_times),
+            "talk_times": valid_spk_times,
         }
 
     def _compute_call_baseline(self) -> None:
@@ -121,36 +139,6 @@ class FeatureStore:
             self.summary["baseline_loudness_median"] = 0.0
             self.summary["baseline_loudness_mad"] = 1.0
 
-    def _identify_decision_turn(self) -> None:
-        # Find the temporally final segment spoken by the Customer.
-        # If no Customer found, fall back to the very last segment overall.
-        customer_segments = [
-            s for s in self.diarization["segments"] if s.get("speaker") == "Speaker 1"
-        ]
-        # Wait, how do we know who the customer is? Let's assume Speaker 1 is Customer, or just the last segment.
-        # Actually, let's just find the very last segment in the diarization that is NOT the dominant speaker,
-        # or just the absolute last segment if we can't reliably map "Customer".
-        # Let's check the dominant speaker.
-        dominant = self.summary.get("dominant_speaker")
-        non_dominant_segments = [
-            s for s in self.diarization["segments"] if s.get("speaker") != dominant
-        ]
-
-        last_seg = None
-        if non_dominant_segments:
-            last_seg = max(non_dominant_segments, key=lambda s: s["end"])
-        elif self.diarization["segments"]:
-            last_seg = max(self.diarization["segments"], key=lambda s: s["end"])
-
-        if last_seg:
-            self.summary["decision_turn"] = {
-                "speaker": last_seg["speaker"],
-                "start": last_seg["start"],
-                "end": last_seg["end"],
-                "duration": last_seg["duration"],
-            }
-        else:
-            self.summary["decision_turn"] = None
 
     def finalize(self, long_pause_seconds: float = 1.0) -> None:
         """
@@ -172,9 +160,7 @@ class FeatureStore:
             self.metadata,
         )
 
-        # 2b. Compute Call Baseline and Decision Turn
         self._compute_call_baseline()
-        self._identify_decision_turn()
 
         # 3. Compute Engineered Features and scoring using context-based engines
         try:

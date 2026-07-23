@@ -344,47 +344,43 @@ def compute_scores(
     sa_score = max(0, min(100, int(round(sa_score))))
 
     # ══════════════════════════════════════════════════════════════════════
-    # PILLAR 6: COLLECTION CONFIDENCE SCORE
+    # PILLAR 6: INTERACTION INTEGRITY SCORE
     # ══════════════════════════════════════════════════════════════════════
-    dt = engineered.get("decision_turn_features", {})
-    pitch_slope_sub = _normalize_linear(
-        dt.get("terminal_pitch_slope", 0.0), low=-50.0, high=100.0, invert=True
-    )
-    dur_z_sub = _normalize_optimal_range(
-        dt.get("decision_turn_duration_z", 0.0),
-        low_bound=-1.5,
-        opt_start=-0.5,
-        opt_end=2.0,
-        high_bound=5.0,
-    )
-    loud_z_sub = _normalize_linear(
-        dt.get("answer_loudness_z", 0.0), low=-2.0, high=2.0, invert=False
-    )
-    voice_frac_sub = _normalize_linear(
-        dt.get("voicing_fraction", 0.0), low=0.4, high=0.9, invert=False
-    )
-    cutoff_sub = 0.0 if dt.get("abrupt_cutoff", False) else 100.0
-    backchannel_sub = _normalize_linear(
-        dt.get("backchannel_composite", 0.0), low=0.0, high=1.0, invert=True
+    # Three objective, acoustically grounded structural features.
+    # No psychoacoustic inference. No speaker intent assumptions.
+    # Weights: Abrupt Cutoff 35% | Trailing Silence 35% | Final Overlap 30%
+    ii = engineered.get("interaction_integrity", {})
+
+    cutoff_sub = 0.0 if ii.get("abrupt_cutoff", False) else 100.0
+
+    trailing_silence_sub = _normalize_linear(
+        ii.get("trailing_silence_seconds", 0.0),
+        low=0.0,
+        high=2.0,
+        invert=False,
     )
 
-    cc_score = (
-        (0.25 * pitch_slope_sub)
-        + (0.20 * dur_z_sub)
-        + (0.20 * loud_z_sub)
-        + (0.15 * voice_frac_sub)
-        + (0.10 * cutoff_sub)
-        + (0.10 * backchannel_sub)
+    final_overlap_sub = _normalize_linear(
+        float(ii.get("final_overlap_count", 0)),
+        low=0.0,
+        high=2.0,
+        invert=True,
     )
-    cc_score = max(0, min(100, int(round(cc_score))))
+
+    ii_score = (
+        (0.35 * cutoff_sub)
+        + (0.35 * trailing_silence_sub)
+        + (0.30 * final_overlap_sub)
+    )
+    ii_score = max(0, min(100, int(round(ii_score))))
 
     # Generate Explanations using ExplainabilityEngine
     explanations = {
-        "collection_confidence": (
-            ExplainabilityEngine.explain_collection_confidence(
-                cc_score, engineered, score_config
+        "interaction_integrity": (
+            ExplainabilityEngine.explain_interaction_integrity(
+                ii_score, engineered, score_config
             )
-            if hasattr(ExplainabilityEngine, "explain_collection_confidence")
+            if hasattr(ExplainabilityEngine, "explain_interaction_integrity")
             else None
         ),
         "audio_quality": ExplainabilityEngine.explain_audio_quality(
@@ -416,7 +412,7 @@ def compute_scores(
         w_sum = 1.0
 
     raw_health = (
-        (w.get("collection_confidence", 0.20) * cc_score)
+        (w.get("interaction_integrity", 0.20) * ii_score)
         + (w.get("audio_quality", 0.25) * aq_score)
         + (w.get("voice_stability", 0.10) * vs_score)
         + (w.get("conversation_flow", 0.25) * flow_score)
@@ -439,7 +435,7 @@ def compute_scores(
     )
 
     scores_dict = {
-        "collection_confidence": cc_score,
+        "interaction_integrity": ii_score,
         "audio_quality": aq_score,
         "voice_stability": vs_score,
         "conversation_flow": flow_score,
@@ -459,3 +455,4 @@ def compute_scores(
         "alerts": [],
         "warnings": [],
     }
+

@@ -5,6 +5,13 @@ data/outputs/
 exports/
 visualization/static/*.wav
 
+personal_req.txt
+data/
+
+analyze_speakers.py
+print_speakers.py
+update_jsons.py
+
 # Python caches
 __pycache__/
 *.pyc

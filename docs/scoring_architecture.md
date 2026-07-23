@@ -37,34 +37,7 @@
 
 ---
 
-## Pillar 2: Recording Reliability Score (15% of Overall)
-
-> Measures: Is the signal transmission technically stable?
-
-| # | Feature | Normalization Type | Range [Low, High] | Weight |
-|---|---------|-------------------|-------------------|--------|
-| 1 | **Dropout Count** | Linear (lower is better) | [0, 30] | **35%** |
-| 2 | **Dropout Duration** (seconds) | Linear (lower is better) | [0, 30] s | **30%** |
-| 3 | **Signal Stability** (SNR std dev) | Linear (higher is better) | [0, 100] | **20%** |
-| 4 | **Clipping Percentage** (%) | Linear (lower is better) | [0, 5] % | **15%** |
-
----
-
-## Pillar 3: Voice Stability Score (15% of Overall)
-
-> Measures: Is the speaker's voice steady and natural?
-
-| # | Feature | Normalization Type | Range [Low, High] | Weight |
-|---|---------|-------------------|-------------------|--------|
-| 1 | **Pitch Stability** (std dev Hz) | Linear (lower is better) | [0, 120] Hz | **25%** |
-| 2 | **Loudness Stability** (std dev dB) | Linear (lower is better) | [0, 80] dB | **20%** |
-| 3 | **Jitter** (%) | Linear (lower is better) | [0, 50] % | **25%** |
-| 4 | **Shimmer** (%) | Linear (lower is better) | [0, 40] % | **20%** |
-| 5 | **Speaking Rate Stability** (std dev) | Linear (lower is better) | [0, 5] sps | **10%** |
-
----
-
-## Pillar 4: Conversation Flow Score (20% of Overall)
+## Pillar 2: Conversation Flow Score (25% of Overall)
 
 > Measures: Is the conversation interactive with smooth turn-taking?
 
@@ -78,7 +51,33 @@
 
 ---
 
-## Pillar 5: Conversation Balance Score (15% of Overall)
+## Pillar 3: Interaction Integrity Score (20% of Overall)
+
+> Measures: Did the conversation progress and conclude in a structurally healthy manner?
+
+| # | Feature | Normalization Type | Parameter Bounds | Weight |
+|---|---------|-------------------|------------------|--------|
+| 1 | **Abrupt Cutoff** | **Categorical** | False → **100%**, True → **0%** | **35%** |
+| 2 | **Trailing Silence** (seconds) | Linear (higher is better) | [0.0, 2.0] s | **35%** |
+| 3 | **Final Window Overlap** | Linear (lower is better) | [0, 2] | **30%** |
+
+---
+
+## Pillar 4: Voice Stability Score (10% of Overall)
+
+> Measures: Is the speaker's voice steady and natural?
+
+| # | Feature | Normalization Type | Parameter Bounds | Weight |
+|---|---------|-------------------|------------------|--------|
+| 1 | **Pitch Stability** (std dev Hz) | Linear (lower is better) | [0, 120] Hz | **45%** |
+| 2 | **Loudness Stability** (std dev dB) | Linear (lower is better) | [0, 80] dB | **35%** |
+| 3 | **Jitter** (%) | Linear (lower is better) | [0, 50] % | **10%** |
+| 4 | **Shimmer** (%) | Linear (lower is better) | [0, 40] % | **5%** |
+| 5 | **Speaking Rate Stability** (std dev) | Linear (lower is better) | [0, 5] sps | **5%** |
+
+---
+
+## Pillar 5: Conversation Balance Score (10% of Overall)
 
 > Measures: Are both speakers participating equally with normal speaker layout?
 
@@ -106,11 +105,16 @@
 | Pillar | Weight in Overall |
 |--------|:-:|
 | Audio Quality | **25%** |
-| Conversation Flow | **20%** |
-| Recording Reliability | **15%** |
-| Voice Stability | **15%** |
-| Conversation Balance | **15%** |
+| Conversation Flow | **25%** |
+| Interaction Integrity | **20%** |
+| Voice Stability | **10%** |
+| Conversation Balance | **10%** |
 | Speech Activity | **10%** |
+
+#### Usability Gate
+Before the final Overall Call Health Score is returned, a **Usability Gate Multiplier (0.0 to 1.0)** is applied. If the raw audio is profoundly corrupted (e.g., extreme noise, heavy clipping, massive dropouts), the gate multiplier will pull down the final score, regardless of how well the conversation flowed.
+
+`Final Score = Raw Weighted Average × Usability Gate Multiplier`
 
 ---
 

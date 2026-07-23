@@ -212,7 +212,7 @@ function renderPillars() {
         { key: 'conversation_flow', title: 'Conversation Flow' },
         { key: 'conversation_balance', title: 'Conversation Balance' },
         { key: 'speech_activity', title: 'Speech Activity' },
-        { key: 'collection_confidence', title: 'Collection Confidence' }
+        { key: 'interaction_integrity', title: 'Interaction Integrity' }
     ];
 
     pillars.forEach(p => {
@@ -1026,7 +1026,7 @@ function generateExecutiveSummary() {
         } else if (worstPillar === "conversation_balance") {
             businessImpact = "One-sided interaction — training opportunity";
             recommendedAction = "Schedule agent coaching";
-        } else if (worstPillar === "collection_confidence") {
+        } else if (worstPillar === "interaction_integrity") {
             businessImpact = "Abrupt termination — possible failed collection";
             recommendedAction = "Flag for re-attempt";
         } else if (worstPillar === "speech_activity") {
@@ -1043,7 +1043,7 @@ function generateExecutiveSummary() {
 
     let recordingStatus = "Clean";
     const dropouts = STATE.raw.engineered_features?.audio_quality?.dropout_count || 0;
-    const cutoff = STATE.raw.engineered_features?.timeline_anomalies?.collection_confidence?.abrupt_cutoff || [];
+    const cutoff = STATE.raw.engineered_features?.timeline_anomalies?.interaction_integrity?.abrupt_cutoff || [];
     if (dropouts > 0 || cutoff.length > 0) recordingStatus = "Degraded";
 
     let csv = "Section,Field,Value\n";
@@ -1066,7 +1066,7 @@ function generateExecutiveSummary() {
     csv += `Pillar Scores,Conversation Flow,${scores.conversation_flow || "0"} (${expl.conversation_flow?.grade || "N/A"})\n`;
     csv += `Pillar Scores,Conversation Balance,${scores.conversation_balance || "0"} (${expl.conversation_balance?.grade || "N/A"})\n`;
     csv += `Pillar Scores,Speech Activity,${scores.speech_activity || "0"} (${expl.speech_activity?.grade || "N/A"})\n`;
-    csv += `Pillar Scores,Collection Confidence,${scores.collection_confidence || "0"} (${expl.collection_confidence?.grade || "N/A"})\n`;
+    csv += `Pillar Scores,Interaction Integrity,${scores.interaction_integrity || "0"} (${expl.interaction_integrity?.grade || "N/A"})\n`;
     
     csv += `Business Summary,Primary Finding,"${primaryFinding}"\n`;
     csv += `Business Summary,Business Impact,"${businessImpact}"\n`;
@@ -1141,7 +1141,7 @@ function generateEvidenceRegister() {
     });
 
     // Collection Confidence
-    (anomalies.collection_confidence?.abrupt_cutoff || []).forEach(t => {
+    (anomalies.interaction_integrity?.abrupt_cutoff || []).forEach(t => {
         addRow("Collection Confidence", "Abrupt hang-up/cutoff", t, "Cutoff detected", "Clean termination", "Flag for re-attempt");
     });
 
@@ -1262,7 +1262,7 @@ function generateRecommendations() {
     
     let hasRec = false;
 
-    if (scores.collection_confidence < 75 || (anomalies.collection_confidence?.abrupt_cutoff?.length > 0)) {
+    if (scores.interaction_integrity < 75 || (anomalies.interaction_integrity?.abrupt_cutoff?.length > 0)) {
         csv += `Critical,Flag for re-attempt — call terminated abruptly,Collection Confidence,Save potential lost collection\n`;
         hasRec = true;
     }
@@ -1399,7 +1399,7 @@ function deriveBatchBusinessFields(explanations) {
         conversation_flow: { impact: "Failed/incomplete interaction — possible callback required", action: "Review response delay/interruption segment" },
         audio_quality: { impact: "Recording unreliable for compliance audit", action: "Escalate to IT/vendor" },
         conversation_balance: { impact: "One-sided interaction — training opportunity", action: "Schedule agent coaching" },
-        collection_confidence: { impact: "Abrupt termination — possible failed collection", action: "Flag for re-attempt" },
+        interaction_integrity: { impact: "Abrupt termination — possible failed collection", action: "Flag for re-attempt" },
         speech_activity: { impact: "Excessive dead air — system or connection issue", action: "Check for connection issues" },
     };
 
@@ -1440,7 +1440,7 @@ function extractBatchRow(data, callId) {
 
     // Recording Status: FAIL if dropouts > 0 or abrupt cutoff detected
     const dropoutCount = aq.dropout_count ?? 0;
-    const cutoffs = anomalies.collection_confidence?.abrupt_cutoff || [];
+    const cutoffs = anomalies.interaction_integrity?.abrupt_cutoff || [];
     const recordingStatus = (dropoutCount > 0 || cutoffs.length > 0) ? "FAIL" : "PASS";
 
     // Review Required
@@ -1527,8 +1527,8 @@ function extractBatchRow(data, callId) {
         expl.conversation_balance?.grade ?? "",
         scores.speech_activity ?? "",
         expl.speech_activity?.grade ?? "",
-        scores.collection_confidence ?? "",
-        expl.collection_confidence?.grade ?? "",
+        scores.interaction_integrity ?? "",
+        expl.interaction_integrity?.grade ?? "",
 
         // Section 4 — Key Audio Statistics
         aq.average_snr ?? summary.average_snr_db ?? "",

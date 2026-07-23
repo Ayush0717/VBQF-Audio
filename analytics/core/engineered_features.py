@@ -43,7 +43,7 @@ def compute_engineered_features(context: AnalysisContext) -> dict[str, Any]:
         },
         "conversation_balance": {"monologues": []},
         "voice_stability": {"voice_cracks": []},
-        "collection_confidence": {"abrupt_cutoff": []},
+        "interaction_integrity": {"abrupt_cutoff": []},
     }
 
     # 1. Gather all raw features lists (Acoustic and Quality are still timeline-based)
@@ -305,69 +305,68 @@ def compute_engineered_features(context: AnalysisContext) -> dict[str, Any]:
         "loudness_slope": round(loudness_slope, 4),
     }
 
-    # 7. Decision Turn Features (for Pillar 7)
-    decision_turn_features = {}
-    dt = summary.get("decision_turn")
-    if dt:
-        start_ts = dt["start"]
-        end_ts = dt["end"]
-        duration_dt = dt["duration"]
-        dt_frames = [f for f in timeline if start_ts <= f["timestamp"] <= end_ts]
+    # 7. Interaction Integrity Features (Global Acoustic End-of-Call Analysis)
+    # ─────────────────────────────────────────────────────────────────────────
+    # Three objective, acoustically grounded structural features.
+    # No psychoacoustic inference. No speaker intent assumptions.
+    # Features: Abrupt Cutoff | Trailing Silence | Final Window Overlap
+    # ─────────────────────────────────────────────────────────────────────────
 
-        if dt_frames:
-            dt_pitches = [
-                f["raw"]["prosody"]["pitch_hz"]
-                for f in dt_frames
-                if f.get("raw", {}).get("prosody", {}).get("pitch_hz") is not None
-            ]
-            terminal_pitches = dt_pitches[-5:] if len(dt_pitches) >= 5 else dt_pitches
-            dt_pitch_slope = compute_slope(terminal_pitches)
+    # Compute hop size from timeline frame spacing
+    hop_size = (
+        (timeline[1]["timestamp"] - timeline[0]["timestamp"])
+        if len(timeline) >= 2
+        else 0.5
+    )
 
-            segs = diarization.get("segments", [])
-            avg_dur = float(np.mean([s["duration"] for s in segs])) if segs else 1.0
-            std_dur = (
-                float(np.std([s["duration"] for s in segs])) if len(segs) > 1 else 1.0
-            )
-            dur_z = (duration_dt - avg_dur) / (std_dur + 1e-6)
+    base_median = summary.get("baseline_loudness_median", 0.0)
+    base_mad = summary.get("baseline_loudness_mad", 1.0)
 
-            dt_loudness = [
-                f["raw"]["acoustic"]["energy"]
-                for f in dt_frames
-                if f.get("raw", {}).get("acoustic", {}).get("energy") is not None
-            ]
-            median_loud = float(np.median(dt_loudness)) if dt_loudness else 0.0
-            base_median = summary.get("baseline_loudness_median", 0.0)
-            base_mad = summary.get("baseline_loudness_mad", 1.0)
-            loud_z = (median_loud - base_median) / (base_mad + 1e-6)
+    # --- Feature 1: Abrupt Cutoff ---
+    # Flag if speech is active in the final 3 frames with high energy and no trailing silence.
+    final_frames = timeline[-3:] if len(timeline) >= 3 else timeline
+    final_vad_flags = [
+        1 if f.get("derived", {}).get("speech", {}).get("active") else 0
+        for f in final_frames
+    ]
+    final_energies = [
+        f.get("raw", {}).get("acoustic", {}).get("energy") or 0.0
+        for f in final_frames
+    ]
+    active_count = sum(final_vad_flags)
+    high_energy_count = sum(1 for e in final_energies if e > (base_median + base_mad))
+    abrupt_cutoff = (active_count >= 2) and (high_energy_count >= 2)
 
-            dt_speech_flags = [
-                1 if f.get("derived", {}).get("speech", {}).get("active") else 0
-                for f in dt_frames
-            ]
-            voice_frac = float(np.mean(dt_speech_flags)) if dt_speech_flags else 0.0
+    # --- Feature 2: Trailing Silence ---
+    # Walk backwards from end of timeline counting consecutive silent frames.
+    trailing_silence_count = 0
+    for f in reversed(timeline):
+        vad_active = f.get("derived", {}).get("speech", {}).get("active")
+        if not vad_active:
+            trailing_silence_count += 1
+        else:
+            break
+    trailing_silence_seconds = round(trailing_silence_count * hop_size, 2)
 
-            last_frame = dt_frames[-1]
-            last_energy = (
-                last_frame.get("raw", {}).get("acoustic", {}).get("energy") or 0.0
-            )
-            abrupt = float(last_energy) > (base_median + base_mad)
+    # --- Feature 3: Final Window Overlap ---
+    # Count overlapping speech transitions in an adaptive end-of-call window.
+    final_window_secs = min(30.0, 0.20 * duration)
+    window_start_ts = duration - final_window_secs
+    window_segments = sorted(
+        [s for s in segments if s.get("end", 0.0) >= window_start_ts],
+        key=lambda s: s["start"],
+    )
+    final_overlap_count = 0
+    for idx in range(1, len(window_segments)):
+        gap = window_segments[idx]["start"] - window_segments[idx - 1]["end"]
+        if gap < -0.2:
+            final_overlap_count += 1
 
-            dt_flux = [
-                f["raw"]["quality"]["spectral_flux"]
-                for f in dt_frames
-                if f.get("raw", {}).get("quality", {}).get("spectral_flux") is not None
-            ]
-            median_flux = float(np.median(dt_flux)) if dt_flux else 0.1
-            backchannel = 1.0 if duration_dt < 1.5 and loud_z < -0.5 and median_flux < 0.05 else 0.0
-
-            decision_turn_features = {
-                "terminal_pitch_slope": dt_pitch_slope,
-                "decision_turn_duration_z": dur_z,
-                "answer_loudness_z": loud_z,
-                "voicing_fraction": voice_frac,
-                "abrupt_cutoff": abrupt,
-                "backchannel_composite": backchannel,
-            }
+    interaction_integrity_features = {
+        "abrupt_cutoff": abrupt_cutoff,
+        "trailing_silence_seconds": trailing_silence_seconds,
+        "final_window_overlap_count": final_overlap_count,
+    }
 
     # Populate Audio Quality Anomalies (Phase 1)
     for d in dropout_events:
@@ -420,8 +419,8 @@ def compute_engineered_features(context: AnalysisContext) -> dict[str, Any]:
                     )
                 current_crack_start = None
 
-    if decision_turn_features.get("abrupt_cutoff"):
-        timeline_anomalies["collection_confidence"]["abrupt_cutoff"].append(
+    if interaction_integrity_features.get("abrupt_cutoff"):
+        timeline_anomalies["interaction_integrity"]["abrupt_cutoff"].append(
             format_ts(duration)
         )
 
@@ -433,6 +432,6 @@ def compute_engineered_features(context: AnalysisContext) -> dict[str, Any]:
         "voice_quality": voice_quality,
         "response_dynamics": response_dynamics,
         "emotional_indicators": emotional_indicators,
-        "decision_turn_features": decision_turn_features,
+        "interaction_integrity": interaction_integrity_features,
         "timeline_anomalies": timeline_anomalies,
     }

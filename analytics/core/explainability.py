@@ -274,28 +274,51 @@ class ExplainabilityEngine:
         )
 
     @classmethod
-    def explain_collection_confidence(
+    def explain_interaction_integrity(
         cls, score_val: float, engineered: dict[str, Any], config: Any
     ) -> ScoreResult:
         anomalies = engineered.get("timeline_anomalies", {}).get(
-            "collection_confidence", {}
+            "interaction_integrity", {}
         )
+        ii = engineered.get("interaction_integrity", {})
         pos = []
         neg = []
 
         abrupt_cutoff = anomalies.get("abrupt_cutoff", [])
         if abrupt_cutoff:
-            neg.append(f"Abrupt hang-up/cutoff detected at {abrupt_cutoff[0]}")
+            neg.append(
+                f"Recording ended while speech was still active — "
+                f"no trailing silence detected (at {abrupt_cutoff[0]})"
+            )
         else:
-            pos.append("Clean call termination")
+            pos.append("Clean call termination with natural trailing silence")
+
+        trailing = ii.get("trailing_silence_seconds", 0.0)
+        if trailing < 0.5:
+            neg.append(
+                f"Only {int(trailing * 1000)}ms of silence before call ended "
+                f"— expected ≥ 2 seconds for a clean termination"
+            )
+        elif trailing >= 1.5:
+            pos.append(f"Natural conversation decay ({trailing:.1f}s trailing silence)")
+
+        final_overlaps = ii.get("final_overlap_count", 0)
+        if final_overlaps > 0:
+            neg.append(
+                f"{final_overlaps} overlapping speech event(s) detected "
+                f"near the end of the call"
+            )
+        else:
+            pos.append("Clean turn-taking in the final window of the call")
 
         return ScoreResult(
-            name="Collection Confidence Score",
+            name="Interaction Integrity Score",
             value=score_val,
             grade=cls.get_grade(score_val, config),
             positives=pos,
             negatives=neg,
         )
+
 
     @classmethod
     def explain_speech_activity(
