@@ -1,5 +1,6 @@
 # Audio files and datasets
 data/audio/
+data/
 data/outputs/
 exports/
 visualization/static/*.wav
@@ -32,3 +33,5 @@ venv.bak/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+company_req.txt

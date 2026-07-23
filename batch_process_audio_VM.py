@@ -349,7 +349,7 @@ def apply_global_patches():
         ssl._create_default_https_context = lambda: ssl.create_default_context(
             cafile="/etc/ssl/certs/ca-certificates.crt"
         )
-    except Exception:
+    except Exception:   
         pass
 
     # 2. Force standard HTTP traffic to bypass buggy Xet client roadblocks
@@ -360,11 +360,26 @@ def apply_global_patches():
         os.environ["HF_TOKEN"] = "YOUR_HF_TOKEN_HERE"
 
     # 4. PyTorch Security Override + Thread Control
+    # import torch
+
+    # # Belt-and-suspenders thread limit (in case env vars were set after torch import)
+    # torch.set_num_threads(int(_THREADS_PER_WORKER))
+    # torch.set_num_interop_threads(int(_THREADS_PER_WORKER))
+
+    # 4. PyTorch Security Override + Thread Control
     import torch
 
-    # Belt-and-suspenders thread limit (in case env vars were set after torch import)
-    torch.set_num_threads(int(_THREADS_PER_WORKER))
-    torch.set_num_interop_threads(int(_THREADS_PER_WORKER))
+    # Safely limit torch intra-op threads (CPU cores used per worker)
+    try:
+        torch.set_num_threads(int(_THREADS_PER_WORKER))
+    except RuntimeError:
+        pass
+
+    # Safely set interop threads only if PyTorch hasn't initialized its parallel engine yet
+    try:
+        torch.set_num_interop_threads(int(_THREADS_PER_WORKER))
+    except RuntimeError:
+        pass
 
     if not hasattr(torch, "_is_patched"):
         original_torch_load = torch.load
